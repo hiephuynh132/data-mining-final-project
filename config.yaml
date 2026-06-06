@@ -1,0 +1,251 @@
+# ============================================================
+#  V4 — Centering Study
+#  Mục tiêu: thử TẤT CẢ các loại centering khả nghi, tìm loại
+#  nào cho kết quả gần nhất với paper KBS 2022.
+#
+#  All configured datasets
+#  11 centering modes x 5 algorithms = 55 combo / dataset
+# ============================================================
+
+data_dir: "/mnt/data-hdd/hiephd/kmean/dataset"
+
+# ── TARGET PAPER RESULTS (dùng để so sánh sau khi chạy) ─────
+paper_targets:
+  glass+identification:
+    kmeans:    51.7
+    diskmeans: 51.2
+    fdkm:      54.0
+    ifdkm:     54.2
+    ifdfd:     53.5
+  ecoli:
+    kmeans:    54.4
+    diskmeans: 67.0
+    fdkm:      69.0
+    ifdkm:     70.8
+    ifdfd:     72.5
+  Breast_Cancer:
+    kmeans:    85.4
+    diskmeans: 89.3
+    fdkm:      93.0
+    ifdkm:     91.4
+    ifdfd:     90.7
+
+# ── DATASETS ─────────────────────────────────────────────────
+# Mỗi dataset có normalize_modes — runner sẽ chạy mỗi mode riêng
+datasets:
+
+  glass:
+    enabled: true
+    name: "glass+identification"
+    path: "glass+identification/glass.data"
+    format: csv_noheader
+    label_col: -1
+    drop_cols: [0]
+    n_clusters: 6
+    max_samples: 0
+    normalize_modes:
+      - center
+      - standardize
+      - pca_whiten
+      - l2_sample
+      - center_l2
+      - frobenius
+      - robust
+      - minmax
+      - row_center
+      - double_center
+      - false
+
+  ecoli:
+    enabled: true
+    name: "ecoli"
+    path: "ecoli/ecoli.data"
+    format: whitespace
+    label_col: -1
+    drop_cols: [0]
+    n_clusters: 8
+    max_samples: 0
+    normalize_modes:
+      - center
+      - standardize
+      - pca_whiten
+      - l2_sample
+      - center_l2
+      - frobenius
+      - robust
+      - minmax
+      - row_center
+      - double_center
+      - false
+
+  breast_cancer:
+    enabled: true
+    name: "Breast_Cancer"
+    path: "Breast_Cancer/data.csv"
+    format: csv
+    label_col: "diagnosis"
+    drop_cols: ["id"]
+    n_clusters: 2
+    max_samples: 0
+    normalize_modes:
+      - center
+      - standardize
+      - pca_whiten
+      - l2_sample
+      - center_l2
+      - frobenius
+      - robust
+      - minmax
+      - row_center
+      - double_center
+      - false
+
+  coil20:
+    enabled: true
+    name: "coil-20-proc"
+    path: "coil-20-proc/coil-20-proc"
+    format: image
+    image_size: [32, 32]
+    image_mode: "L"
+    n_clusters: 20
+    max_samples: 0
+    normalize_modes:
+      - center
+      - standardize
+      - pca_whiten
+      - l2_sample
+      - center_l2
+      - frobenius
+      - robust
+      - minmax
+      - row_center
+      - double_center
+      - false
+
+  digits:
+    enabled: true
+    name: "Digits"
+    format: sklearn_digits
+    n_clusters: 10
+    max_samples: 0
+    normalize_modes:
+      - center
+      - standardize
+      - pca_whiten
+      - l2_sample
+      - center_l2
+      - frobenius
+      - robust
+      - minmax
+      - row_center
+      - double_center
+      - false
+
+  segmentation:
+    enabled: true
+    name: "image+segmentation"
+    path: "image+segmentation/segmentation.test"
+    format: segmentation
+    skip_rows: 5
+    label_col: 0
+    n_clusters: 7
+    max_samples: 0
+    normalize_modes:
+      - center
+      - standardize
+      - pca_whiten
+      - l2_sample
+      - center_l2
+      - frobenius
+      - robust
+      - minmax
+      - row_center
+      - double_center
+      - false
+
+  coil100:
+    enabled: true
+    name: "coil-100"
+    path: "coil-100/coil-100"
+    format: image
+    image_size: [32, 32]
+    image_mode: "RGB"
+    n_clusters: 100
+    max_samples: 0
+    normalize_modes:
+      - center
+      - standardize
+      - pca_whiten
+      - l2_sample
+      - center_l2
+      - frobenius
+      - robust
+      - minmax
+      - row_center
+      - double_center
+      - false
+
+  # mnist:
+  #   enabled: true
+  #   name: "MNIST"
+  #   path: "MNIST"
+  #   format: mnist
+  #   n_clusters: 10
+  #   max_samples: 10000
+  #   normalize_modes:
+  #     - center
+  #     - standardize
+  #     - pca_whiten
+  #     - l2_sample
+  #     - center_l2
+  #     - frobenius
+  #     - robust
+  #     - minmax
+  #     - row_center
+  #     - double_center
+  #     - false
+
+  # covertype:
+  #   enabled: true
+  #   name: "covertype"
+  #   path: "covertype/covtype.data.gz"
+  #   format: covertype
+  #   n_clusters: 7
+  #   max_samples: 10000
+  #   normalize_modes:
+  #     - center
+  #     - standardize
+  #     - pca_whiten
+  #     - l2_sample
+  #     - center_l2
+  #     - frobenius
+  #     - robust
+  #     - minmax
+  #     - row_center
+  #     - double_center
+  #     - false
+
+# ── ALGORITHMS ───────────────────────────────────────────────
+algorithms:
+  - kmeans
+  - diskmeans
+  - fdkm
+  - ifdkm
+  - ifdfd
+
+# ── SETTINGS ─────────────────────────────────────────────────
+settings:
+  n_runs: 5                   # 5 runs (nhanh hơn 10, đủ để thấy trend)
+  n_init_per_run: 2           # 2 random restarts mỗi run
+
+  gamma_grid: [-8, -6, -4, -2, 0, 2, 4, 6, 8]
+  gamma_search_runs: 2        # 2 trial per gamma (nhanh hơn 3)
+  gamma_select_by: acc
+
+  max_iter: 300
+  tol: 1.0e-6
+
+  seed_base: 42
+
+  output_dir: "results"
+  log_dir:    "logs"

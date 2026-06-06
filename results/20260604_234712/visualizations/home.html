@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Clustering Results</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #17212b; background: #eef2f5; }
+  main { height: 100vh; display: grid; grid-template-columns: 260px minmax(0,1fr); }
+  aside { background: #fff; border-right: 1px solid #d5dde4; padding: 18px 12px; overflow: auto; }
+  .brand { font-size: 17px; font-weight: 750; padding: 4px 8px 15px; border-bottom: 1px solid #e5e9ed; margin-bottom: 12px; }
+  .eyebrow { color: #71808d; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; margin: 12px 8px 7px; }
+  button { font: inherit; color: inherit; }
+  .dataset { border: 0; background: transparent; width: 100%; text-align: left; padding: 9px 10px; cursor: pointer; border-left: 3px solid transparent; }
+  .dataset:hover { background: #f0f4f7; }
+  .dataset.active { background: #e8f1f7; border-left-color: #2878b5; font-weight: 650; }
+  .content { min-width: 0; display: grid; grid-template-rows: auto auto minmax(0,1fr); }
+  header { background: #fff; padding: 15px 20px 11px; border-bottom: 1px solid #d5dde4; display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+  h1 { font-size: 19px; margin: 0; letter-spacing: 0; }
+  #openExternal { text-decoration: none; color: #17669d; font-size: 13px; border: 1px solid #b9cbd8; padding: 7px 10px; }
+  #openExternal:hover { background: #edf5fa; }
+  nav { display: flex; gap: 3px; background: #fff; padding: 8px 16px; border-bottom: 1px solid #d5dde4; overflow-x: auto; }
+  .tab { border: 0; background: transparent; white-space: nowrap; padding: 8px 11px; cursor: pointer; color: #5d6974; }
+  .tab:hover { background: #f0f3f5; }
+  .tab.active { color: #17669d; background: #eaf3f8; font-weight: 650; }
+  .viewer { min-height: 0; padding: 12px; }
+  iframe { display: block; width: 100%; height: 100%; border: 1px solid #cad4dc; background: white; }
+  @media (max-width: 760px) {
+    main { grid-template-columns: 1fr; grid-template-rows: auto minmax(0,1fr); }
+    aside { border-right: 0; border-bottom: 1px solid #d5dde4; padding: 8px; display: flex; overflow-x: auto; }
+    .brand, .eyebrow { display: none; }
+    .dataset { width: auto; white-space: nowrap; border-left: 0; border-bottom: 3px solid transparent; }
+    .dataset.active { border-bottom-color: #2878b5; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <aside>
+    <div class="brand">Clustering Results</div>
+    <div class="eyebrow">Datasets</div>
+    <div id="datasets"></div>
+  </aside>
+  <section class="content">
+    <header><h1 id="title"></h1><a id="openExternal" target="_blank">Open full page</a></header>
+    <nav id="tabs"></nav>
+    <div class="viewer"><iframe id="viewer" title="Result viewer"></iframe></div>
+  </section>
+</main>
+<script>
+const DATASETS = [{"name": "glass+identification", "stem": "glass_identification"}, {"name": "ecoli", "stem": "ecoli"}, {"name": "Breast_Cancer", "stem": "Breast_Cancer"}, {"name": "coil-20-proc", "stem": "coil-20-proc"}, {"name": "Digits", "stem": "Digits"}, {"name": "image+segmentation", "stem": "image_segmentation"}, {"name": "coil-100", "stem": "coil-100"}];
+const VIEWS = [
+  ["Interactive","interactive_centroids.html"],
+  ["Clusters","clusters.png"],
+  ["Ground truth + centers","ground_truth_centers.png"],
+  ["Metrics","metrics.png"],
+  ["Runtime + iterations","runtime_iterations.png"],
+  ["Memory","memory_usage.png"],
+  ["Centroid distances","centroid_distances.png"]
+];
+let selectedDataset = 0, selectedView = 0;
+const datasetBox=document.getElementById("datasets"),tabBox=document.getElementById("tabs");
+function filePath(){const d=DATASETS[selectedDataset],v=VIEWS[selectedView];return `${d.stem}_${v[1]}`;}
+function render(){
+  document.querySelectorAll(".dataset").forEach((el,i)=>el.classList.toggle("active",i===selectedDataset));
+  document.querySelectorAll(".tab").forEach((el,i)=>el.classList.toggle("active",i===selectedView));
+  document.getElementById("title").textContent=DATASETS[selectedDataset].name+" · "+VIEWS[selectedView][0];
+  const path=filePath();document.getElementById("viewer").src=path;document.getElementById("openExternal").href=path;
+  localStorage.setItem("clusterHomeDataset",selectedDataset);localStorage.setItem("clusterHomeView",selectedView);
+}
+DATASETS.forEach((dataset,index)=>{
+  const button=document.createElement("button");button.className="dataset";button.textContent=dataset.name;
+  button.onclick=()=>{selectedDataset=index;render();};datasetBox.appendChild(button);
+});
+VIEWS.forEach((view,index)=>{
+  const button=document.createElement("button");button.className="tab";button.textContent=view[0];
+  button.onclick=()=>{selectedView=index;render();};tabBox.appendChild(button);
+});
+selectedDataset=Math.min(Number(localStorage.getItem("clusterHomeDataset")||0),DATASETS.length-1);
+selectedView=Math.min(Number(localStorage.getItem("clusterHomeView")||0),VIEWS.length-1);
+render();
+</script>
+</body>
+</html>

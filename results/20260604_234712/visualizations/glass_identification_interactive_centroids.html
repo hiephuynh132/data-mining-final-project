@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>glass+identification interactive centroids</title>
+<style>
+  :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f5f7f9; color: #18212b; }
+  main { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr) 290px; }
+  .plot-wrap { min-width: 0; padding: 22px; display: flex; flex-direction: column; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: 0; }
+  .subtitle { color: #65717d; font-size: 13px; margin-bottom: 14px; }
+  .canvas-shell { position: relative; flex: 1; min-height: 620px; background: white; border: 1px solid #d9e0e6; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; }
+  canvas.dragging { cursor: grabbing; }
+  .zoom-controls { position: absolute; top: 12px; left: 12px; z-index: 3; display: flex; gap: 5px; }
+  .zoom-controls button { width: 34px; height: 32px; background: #fff; border: 1px solid #cfd7de; cursor: pointer; font-size: 17px; box-shadow: 0 1px 4px #0001; }
+  .zoom-controls button:hover { background: #eef2f5; }
+  .zoom-controls .reset { width: auto; padding: 0 10px; font-size: 12px; }
+  aside { border-left: 1px solid #d9e0e6; background: white; padding: 20px 16px; overflow: auto; }
+  h2 { font-size: 13px; text-transform: uppercase; color: #68737e; margin: 4px 0 10px; letter-spacing: .04em; }
+  .class-list, .source-list { display: grid; gap: 4px; margin-bottom: 22px; }
+  button { border: 0; background: transparent; color: inherit; font: inherit; }
+  .class-item { width: 100%; display: flex; align-items: center; gap: 9px; padding: 7px 8px; cursor: pointer; text-align: left; }
+  .class-item:hover, .class-item.active { background: #eef2f5; }
+  .swatch { width: 12px; height: 12px; flex: 0 0 12px; border-radius: 50%; }
+  .all { font-weight: 650; border-bottom: 1px solid #e7ebef; margin-bottom: 5px; }
+  .source { display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: center; font-size: 13px; padding: 4px 8px; }
+  .symbol { text-align: center; font-size: 18px; font-weight: 800; }
+  .distance-list { display: grid; gap: 8px; margin-bottom: 22px; }
+  .distance-row { display: grid; grid-template-columns: 76px 1fr 48px; gap: 7px; align-items: center; font-size: 12px; }
+  .distance-track { height: 8px; background: #edf0f2; overflow: hidden; }
+  .distance-bar { height: 100%; min-width: 2px; }
+  .distance-value { text-align: right; font-variant-numeric: tabular-nums; }
+  .hint { font-size: 12px; color: #68737e; line-height: 1.5; }
+  .tooltip { position: fixed; pointer-events: none; display: none; z-index: 4; background: #18212b; color: white; padding: 7px 9px; font-size: 12px; border-radius: 4px; box-shadow: 0 4px 16px #0003; }
+  @media (max-width: 850px) {
+    main { grid-template-columns: 1fr; }
+    aside { border-left: 0; border-top: 1px solid #d9e0e6; }
+    .canvas-shell { min-height: 520px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <section class="plot-wrap">
+    <h1 id="title"></h1>
+    <div class="subtitle">Ground-truth samples with centroids from all algorithms</div>
+    <div class="canvas-shell">
+      <canvas id="plot"></canvas>
+      <div class="zoom-controls">
+        <button id="zoomIn" title="Zoom in">+</button>
+        <button id="zoomOut" title="Zoom out">−</button>
+        <button id="resetZoom" class="reset" title="Reset view">Reset</button>
+      </div>
+    </div>
+  </section>
+  <aside>
+    <h2>Classes</h2>
+    <div id="classes" class="class-list"></div>
+    <h2>Centroid source</h2>
+    <div id="sources" class="source-list"></div>
+    <h2>Distance ranking</h2>
+    <div id="distanceRanking" class="distance-list"></div>
+    <div class="hint">Hover a class to isolate it. Click to lock the selection. Use the mouse wheel to zoom, drag to pan, and double-click to reset.</div>
+  </aside>
+</main>
+<div id="tooltip" class="tooltip"></div>
+<script>
+const DATA = {"dataset": "glass+identification", "points": [[1.1511395711419283, 0.5294876379900539, 0], [-0.5741371723870028, 0.7597877743191686, 0], [-0.9401597221218517, 0.9298359655532282, 0], [-0.14208328339246926, 0.9616774397522362, 0], [-0.35109229084209786, 1.0912492125209965, 0], [-0.29026658274666717, 1.3240075623472434, 0], [-0.2526714436556395, 1.1161495765227285, 0], [-0.12029946591444761, 1.221846222507522, 0], [-0.02081603081283125, 0.3219326090258536, 0], [-0.0023522289420574824, 1.0658134373250532, 0], [-0.3825149365370781, 1.3801340262807615, 0], [-0.013353867493488344, 1.1047191296229943, 0], [-0.3097243898217529, 1.4230402352284985, 0], [0.1565210134482335, 1.2359282316192004, 0], [-0.08995666276900716, 1.1812521059004137, 0], [-0.11525502275377067, 1.160282116925452, 0], [0.17345832034705705, 1.1824396659894427, 0], [1.4581237218335603, -0.09884137804996918, 0], [0.5473162665676238, 0.2956601300833013, 0], [-0.308817022229662, 0.7631621565000501, 0], [0.205673878640059, 0.9991826606809796, 0], [1.2160534522663482, 0.4368961079710662, 0], [0.041167929749511105, 1.027883380085991, 0], [-0.1132060123571498, 1.0276218101882404, 0], [-0.1475233657234534, 0.9337670487687582, 0], [-0.05048652181359036, 1.0472307478090066, 0], [-0.15577397988498165, 0.7381495456652742, 0], [-0.21709377909690056, 1.0394671751751796, 0], [-0.11509363313884273, 1.0529393599689791, 0], [-0.06583749152784069, 0.9028758387526105, 0], [0.2982614507712793, 1.1648932834674202, 0], [-0.022236343278105534, 1.1627374459713988, 0], [0.3965861124630015, 1.0730734299450568, 0], [-0.06908627337470731, 1.1639042135125164, 0], [0.0817537724955473, 0.9660194287459593, 0], [-0.38891864021988054, 1.0097800358717253, 0], [0.25742280936634643, 0.09893604419796762, 0], [0.027043095310118222, 0.9411508675251326, 0], [1.9331124452716977, 0.1421142977118111, 0], [1.9331124452716977, 0.1421142977118111, 0], [0.2139788015551602, 1.0650516895572057, 0], [0.017365376410710127, 1.1009316701240333, 0], [-0.09910424485404065, 0.7468069212809654, 0], [1.9078464912792732, 0.13514621800007925, 0], [0.7552389092240154, 1.1943019338653658, 0], [0.4151490700502616, 0.2932872638372973, 0], [0.6044233952267791, 0.7801998493041389, 0], [2.971361589338111, -0.463140501688358, 0], [2.0728116145990527, 0.19367388050403536, 0], [0.39311159061584616, 0.3402581874762725, 0], [2.7272109506326263, 0.11303857687532337, 0], [0.7230688834324556, 0.47489192700019256, 0], [0.10616045108301904, 0.4145060375868735, 0], [0.18136104634161718, 0.4099578964318331, 0], [0.17180489501150045, 0.5102877859027163, 0], [0.4592567672808196, 0.9720717897267666, 0], [-0.4231983763243723, 1.8165560337395792, 0], [0.015840562422579994, 0.9574540617947388, 0], [-0.32724242014986094, 1.1023619688102952, 0], [0.03737308552467924, 1.0543206219272778, 0], [0.4573068708345081, 0.551911399870446, 0], [0.23622084002542196, -0.5683302033163515, 0], [1.8848380290190934, 0.29647569979414956, 0], [1.9064632410064855, -0.18518682489148955, 0], [1.7673901193701558, 0.23485117196730101, 0], [1.2070991363581, 0.016816602227800466, 0], [2.0953586566569897, 0.42701387436689925, 0], [2.0657447979864183, 0.44708532416241453, 0], [2.00488480334538, 0.36349865639868834, 0], [2.2519553634337774, -0.02797397734541537, 0], [-1.1106297127639944, 0.36045919095013845, 1], [0.7493440653447122, 0.8700947226017977, 1], [-0.9350687613295083, 1.2039456236268775, 1], [-0.8813335564729786, 0.9723130679646451, 1], [-0.9225622900272787, 1.196929284627588, 1], [-0.8780410729034682, 1.2089292108142735, 1], [-0.6850886153339989, 0.8416398916317696, 1], [-0.6903591451513111, 1.0662993095399242, 1], [-0.46299774797587023, 0.9882472872845971, 1], [-1.0745003490503642, 0.9647887039894222, 1], [-1.2136979935873926, 0.7790981552267762, 1], [-0.9091896652187362, 1.138999854334844, 1], [-0.5356573513598282, 1.0697841748081198, 1], [-0.6514041263222524, 1.1164724155786963, 1], [-2.3163760641409983, 0.5739824610406626, 1], [-0.6195276169695919, 0.8770619099063391, 1], [-0.8677634879508864, 1.078018128966504, 1], [-0.5363041184157588, 0.9234788602024532, 1], [-0.6509035331650644, 1.0642460845074404, 1], [-0.7553927799161606, 1.0992666295786975, 1], [0.9916588012245904, 1.0218999948208003, 1], [-0.5626421203489989, 1.0658104246056974, 1], [-0.30679637819247374, 0.9640663951444997, 1], [-0.7346040262365353, 0.9223869039833837, 1], [-0.6552475599847027, 1.1430325523312188, 1], [0.09464075308561992, 0.4561646290034119, 1], [0.9042867196204274, 0.8981876881088465, 1], [0.6138953764338588, 1.4023415330494597, 1], [-0.6541094813720751, 0.7109027359308906, 1], [-0.13358302231925606, 0.4119986378214619, 1], [-0.022647912765291028, 0.8103490808602423, 1], [-0.07237032773088559, 0.5166630860439819, 1], [0.9835047597987622, 1.0201084745250357, 1], [3.852381937544751, -1.345064669021432, 1], [2.351364694518858, -1.1401984649729398, 1], [3.333286931869716, -2.0261687927457674, 1], [3.6402133628734115, -6.193444646287056, 1], [7.138697856565079, -4.004436692758952, 1], [1.6950229031465418, -2.0741455912681133, 1], [0.7415934506218785, -0.785341417075829, 1], [4.518744928845984, -2.027725627076458, 1], [4.873034405166102, -2.11110881655292, 1], [4.596497085932551, -2.699447601220027, 1], [0.323984510878981, 0.9151704621831087, 1], [0.2592090286647974, 1.0184562154038677, 1], [0.028627200166133394, 0.8037043651501137, 1], [0.18671404561659832, 0.8888090193921785, 1], [-0.8349746054226026, 0.5236907162416898, 1], [-0.0631138455567709, 1.0908051819160902, 1], [-0.6886452499197172, 0.8445446696648499, 1], [0.09333543627971186, 0.7975136500287074, 1], [-0.3259523841434301, 1.1613144527053563, 1], [-0.5720103132650656, 0.9280417639308978, 1], [-0.7814154568230471, 0.6418871053996974, 1], [0.7930410282783177, 0.6043282695479844, 1], [0.2727464384354653, 0.7608509300960571, 1], [-0.12135003313227571, 1.0627036698173504, 1], [1.115743912697536, -0.6204385692558863, 1], [0.640905488496198, -0.9005750786840763, 1], [1.065940392236689, -1.3675776666290806, 1], [1.3773883933025155, -1.6033636986509254, 1], [3.4189437126999516, -3.1348997331365624, 1], [-0.002301063789718475, 1.0244734591844442, 1], [0.09431641208158559, 0.6450113771010212, 1], [-0.12053674539205024, 1.0157421467303973, 1], [0.6144437584180208, 1.091562875601759, 1], [0.33768228615475215, 1.2911046263379176, 1], [-0.5413218037924332, 1.0313800576758378, 1], [-0.7662263272662815, 1.2191868302577136, 1], [-0.7748318208001425, 1.0814543865231696, 1], [-0.6583287710910456, 0.7807304580273595, 1], [0.4790613182040771, 1.0089779543982282, 1], [-0.06255117683769813, 1.2208627614887255, 1], [-0.7021917538246161, 0.7511369916990986, 1], [0.30263962364316244, 1.0441015941818417, 1], [0.968425775770085, 1.148963340804725, 1], [0.11596517683603587, 0.7379703484312665, 2], [-0.4924298074363359, 0.9562419606646665, 2], [-0.1668646353320095, 0.9654064702289266, 2], [-0.0709007623739815, 1.3012025180787299, 2], [-0.31580076388889666, 0.753169864470213, 2], [1.529129274075214, -0.054424012822105274, 2], [0.5954388798831932, 0.954422853477163, 2], [-0.4471831801418995, 0.9574216742802373, 2], [-0.0022807390005502356, 0.9592975916118833, 2], [-0.2774488186937388, 1.0102875834961849, 2], [-0.26262546286662247, 0.7717490681457172, 2], [1.747115683393762, 0.18320656788314646, 2], [-0.08194129620286582, 0.34355568108961076, 2], [0.07700009550944478, 0.27896900632135935, 2], [0.10606132163521592, 0.2830818502044856, 2], [1.2189782301403236, 0.6733728003092468, 2], [2.1932770349034536, 0.16019471552789463, 2], [-4.322873321226467, -2.6538568015855972, 3], [0.26033795220482453, -0.5480333218442189, 3], [1.8033764301207857, -0.5287277027713175, 3], [1.786186114231942, -0.3127518877214674, 3], [0.6837764770635513, -1.397283320512035, 3], [-0.7950246764825992, -0.7947296088287902, 3], [0.5445438461392959, -1.7672450865344131, 3], [1.9298182896043903, -2.492442272437518, 3], [-4.38953460445636, 0.10344957671313028, 3], [-4.432539734294783, 0.16868012484979317, 3], [1.5950421539064747, -2.113316083078238, 3], [1.0100444661438794, -0.8840779297540494, 3], [1.6310755635173693, -1.3186173216428596, 3], [0.25649877757843803, -0.6392252359991163, 4], [0.6544635155919183, -0.34254575171047885, 4], [-0.19965027207589844, -0.7402253103501278, 4], [-0.14438995472106117, -0.6398492814958497, 4], [-2.325668234298765, 0.4624003285180982, 4], [-0.27347588570732556, -1.7888218158707352, 4], [-0.06689696381739775, -2.243693920047147, 4], [1.1141639702520458, -1.4571125255440558, 4], [-3.282796790809384, 0.04179135756923314, 4], [-3.9505118103242025, 0.7285066087666611, 5], [-2.760345789829357, -1.2670549364923673, 5], [1.0670987448146647, 0.0714334989106237, 5], [0.5889638890177176, -1.9116794987668255, 5], [-0.021703222617970128, -3.4738350503663207, 5], [-1.387707094414827, -1.089145370878926, 5], [-2.1492648000728924, -2.2956084328567035, 5], [-2.1069807909895477, -2.130718778401104, 5], [-2.0813561174853885, -3.0784052605835313, 5], [-2.161169389097055, -2.8997706229472247, 5], [-2.298464383359565, -2.2146693784155116, 5], [-2.10499822421216, -2.37404263723141, 5], [-1.958657054496131, -2.4631882264026412, 5], [-2.3903804265767072, -2.400585147340567, 5], [-2.340259861452906, -2.4336664151846703, 5], [-2.6793604575512284, -2.130820371105515, 5], [-1.3773855649304148, 0.8707592969808317, 5], [-2.7323115560766524, -2.0372873016271167, 5], [-2.5251984922667456, -3.120982662578198, 5], [-2.2697401693796113, -2.3483157616133914, 5], [-2.045321079485834, -3.0759496539608344, 5], [-2.187876960315973, -2.8564846298297617, 5], [-3.557097711578981, -3.4667507279083214, 5], [-1.9936467980221892, -2.599396543737175, 5], [-2.383834568677432, -3.061677020542509, 5], [-2.397651904153244, -3.1082357032947026, 5], [-1.6802462650858156, -3.284823458877565, 5], [-2.3697476827164015, -2.7568727968502102, 5], [-2.262648852967918, -3.0285915507327315, 5]], "centers": [{"source": "Ground Truth", "classId": 0, "x": 0.4774152916977899, "y": 0.7255489487568888, "marker": "star", "acc": null, "memoryPeakMb": null, "memoryDeltaMb": null}, {"source": "Ground Truth", "classId": 1, "x": 0.3499574556125641, "y": 0.33027025486269285, "marker": "star", "acc": null, "memoryPeakMb": null, "memoryDeltaMb": null}, {"source": "Ground Truth", "classId": 2, "x": 0.3214994253199849, "y": 0.6608897965528604, "marker": "star", "acc": null, "memoryPeakMb": null, "memoryDeltaMb": null}, {"source": "Ground Truth", "classId": 3, "x": -0.2073670033482844, "y": -1.1183808950113525, "marker": "star", "acc": null, "memoryPeakMb": null, "memoryDeltaMb": null}, {"source": "Ground Truth", "classId": 4, "x": -0.4741946486674922, "y": -0.816364683881131, "marker": "star", "acc": null, "memoryPeakMb": null, "memoryDeltaMb": null}, {"source": "Ground Truth", "classId": 5, "x": -2.0178553239415438, "y": -2.2495813287540596, "marker": "star", "acc": null, "memoryPeakMb": null, "memoryDeltaMb": null}, {"source": "KMeans", "classId": 0, "x": 1.2894340029466982, "y": -0.17237946708012122, "marker": "x", "acc": 54.6729, "memoryPeakMb": 167.59375, "memoryDeltaMb": 0.91796875}, {"source": "KMeans", "classId": 1, "x": -0.24421472931816227, "y": 0.90248959401937, "marker": "x", "acc": 54.6729, "memoryPeakMb": 167.59375, "memoryDeltaMb": 0.91796875}, {"source": "KMeans", "classId": 2, "x": 4.502774040564685, "y": -3.1710331299682486, "marker": "x", "acc": 54.6729, "memoryPeakMb": 167.59375, "memoryDeltaMb": 0.91796875}, {"source": "KMeans", "classId": 3, "x": 0.8822943057212809, "y": -1.224570591609366, "marker": "x", "acc": 54.6729, "memoryPeakMb": 167.59375, "memoryDeltaMb": 0.91796875}, {"source": "KMeans", "classId": 4, "x": -3.282796790809384, "y": 0.04179135756923314, "marker": "x", "acc": 54.6729, "memoryPeakMb": 167.59375, "memoryDeltaMb": 0.91796875}, {"source": "KMeans", "classId": 5, "x": -2.3513014481182384, "y": -2.270751119951483, "marker": "x", "acc": 54.6729, "memoryPeakMb": 167.59375, "memoryDeltaMb": 0.91796875}, {"source": "DisKmeans", "classId": 0, "x": 1.7438204473788756, "y": 0.07262390463155897, "marker": "plus", "acc": 54.2056, "memoryPeakMb": 170.56640625, "memoryDeltaMb": 2.015625}, {"source": "DisKmeans", "classId": 1, "x": -0.1681312569386239, "y": 0.9219660372613102, "marker": "plus", "acc": 54.2056, "memoryPeakMb": 170.56640625, "memoryDeltaMb": 2.015625}, {"source": "DisKmeans", "classId": 2, "x": -3.538865137510264, "y": -0.3415860217945914, "marker": "plus", "acc": 54.2056, "memoryPeakMb": 170.56640625, "memoryDeltaMb": 2.015625}, {"source": "DisKmeans", "classId": 3, "x": 3.276468145739995, "y": -2.4201460980248597, "marker": "plus", "acc": 54.2056, "memoryPeakMb": 170.56640625, "memoryDeltaMb": 2.015625}, {"source": "DisKmeans", "classId": 4, "x": 0.4914770836863869, "y": -1.1758222000415752, "marker": "plus", "acc": 54.2056, "memoryPeakMb": 170.56640625, "memoryDeltaMb": 2.015625}, {"source": "DisKmeans", "classId": 5, "x": -2.2491963983103225, "y": -2.6082869489507705, "marker": "plus", "acc": 54.2056, "memoryPeakMb": 170.56640625, "memoryDeltaMb": 2.015625}, {"source": "FDKM", "classId": 0, "x": 1.411220780457794, "y": -0.08889299583046385, "marker": "diamond", "acc": 54.6729, "memoryPeakMb": 170.578125, "memoryDeltaMb": 0.0078125}, {"source": "FDKM", "classId": 1, "x": -0.15982786511225683, "y": 0.9356541711297715, "marker": "diamond", "acc": 54.6729, "memoryPeakMb": 170.578125, "memoryDeltaMb": 0.0078125}, {"source": "FDKM", "classId": 2, "x": 4.502774040564685, "y": -3.1710331299682486, "marker": "diamond", "acc": 54.6729, "memoryPeakMb": 170.578125, "memoryDeltaMb": 0.0078125}, {"source": "FDKM", "classId": 3, "x": 0.8822943057212809, "y": -1.224570591609366, "marker": "diamond", "acc": 54.6729, "memoryPeakMb": 170.578125, "memoryDeltaMb": 0.0078125}, {"source": "FDKM", "classId": 4, "x": -3.971161052026234, "y": -0.584055085549676, "marker": "diamond", "acc": 54.6729, "memoryPeakMb": 170.578125, "memoryDeltaMb": 0.0078125}, {"source": "FDKM", "classId": 5, "x": -2.146946843476617, "y": -2.407942727150002, "marker": "diamond", "acc": 54.6729, "memoryPeakMb": 170.578125, "memoryDeltaMb": 0.0078125}, {"source": "IFDKM", "classId": 0, "x": 1.3990807932525458, "y": -0.23719367297284083, "marker": "triangle", "acc": 54.2056, "memoryPeakMb": 170.578125, "memoryDeltaMb": 0.0}, {"source": "IFDKM", "classId": 1, "x": -0.1426176002715469, "y": 0.9336903591259559, "marker": "triangle", "acc": 54.2056, "memoryPeakMb": 170.578125, "memoryDeltaMb": 0.0}, {"source": "IFDKM", "classId": 2, "x": 4.502774040564685, "y": -3.1710331299682486, "marker": "triangle", "acc": 54.2056, "memoryPeakMb": 170.578125, "memoryDeltaMb": 0.0}, {"source": "IFDKM", "classId": 3, "x": 0.8822943057212809, "y": -1.224570591609366, "marker": "triangle", "acc": 54.2056, "memoryPeakMb": 170.578125, "memoryDeltaMb": 0.0}, {"source": "IFDKM", "classId": 4, "x": -3.971161052026234, "y": -0.584055085549676, "marker": "triangle", "acc": 54.2056, "memoryPeakMb": 170.578125, "memoryDeltaMb": 0.0}, {"source": "IFDKM", "classId": 5, "x": -2.2286869827404105, "y": -2.3669468685647583, "marker": "triangle", "acc": 54.2056, "memoryPeakMb": 170.578125, "memoryDeltaMb": 0.0}, {"source": "IFDFD", "classId": 0, "x": 1.3990807932525458, "y": -0.23719367297284083, "marker": "square", "acc": 54.2056, "memoryPeakMb": 170.58984375, "memoryDeltaMb": 0.01171875}, {"source": "IFDFD", "classId": 1, "x": -0.1426176002715469, "y": 0.9336903591259559, "marker": "square", "acc": 54.2056, "memoryPeakMb": 170.58984375, "memoryDeltaMb": 0.01171875}, {"source": "IFDFD", "classId": 2, "x": 4.502774040564685, "y": -3.1710331299682486, "marker": "square", "acc": 54.2056, "memoryPeakMb": 170.58984375, "memoryDeltaMb": 0.01171875}, {"source": "IFDFD", "classId": 3, "x": 0.8822943057212809, "y": -1.224570591609366, "marker": "square", "acc": 54.2056, "memoryPeakMb": 170.58984375, "memoryDeltaMb": 0.01171875}, {"source": "IFDFD", "classId": 4, "x": -3.971161052026234, "y": -0.584055085549676, "marker": "square", "acc": 54.2056, "memoryPeakMb": 170.58984375, "memoryDeltaMb": 0.01171875}, {"source": "IFDFD", "classId": 5, "x": -2.2286869827404105, "y": -2.3669468685647583, "marker": "square", "acc": 54.2056, "memoryPeakMb": 170.58984375, "memoryDeltaMb": 0.01171875}], "classNames": ["Building window (float)", "Building window (non-float)", "Vehicle window (float)", "Container", "Tableware", "Headlamp"], "colors": ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b"], "sources": ["Ground Truth", "KMeans", "DisKmeans", "FDKM", "IFDKM", "IFDFD"]};
+const canvas = document.getElementById("plot");
+const ctx = canvas.getContext("2d");
+const shell = canvas.parentElement;
+const tooltip = document.getElementById("tooltip");
+const margin = {left: 68, right: 24, top: 22, bottom: 56};
+let hoverClass = null, lockedClass = null, hitCenters = [];
+let view = {scale:1, offsetX:0, offsetY:0};
+let dragging = false, dragStart = null;
+const symbols = {star:"★", x:"✕", plus:"✚", diamond:"◆", triangle:"▲", square:"■"};
+const sourceColors = {
+  "Ground Truth":"#111111", "KMeans":"#D62728", "DisKmeans":"#1F77B4",
+  "FDKM":"#2CA02C", "IFDKM":"#9467BD", "IFDFD":"#8C564B"
+};
+const sourceOffsets = {"KMeans":-28,"DisKmeans":-14,"FDKM":0,"IFDKM":14,"IFDFD":28};
+document.getElementById("title").textContent = DATA.dataset + ": interactive centroid comparison";
+
+const xs = DATA.points.map(p => p[0]), ys = DATA.points.map(p => p[1]);
+let xmin = Math.min(...xs), xmax = Math.max(...xs), ymin = Math.min(...ys), ymax = Math.max(...ys);
+const xpad = (xmax-xmin || 1)*.07, ypad = (ymax-ymin || 1)*.09;
+xmin -= xpad; xmax += xpad; ymin -= ypad; ymax += ypad;
+
+function activeClass(){ return lockedClass === null ? hoverClass : lockedClass; }
+function baseSx(x){ return margin.left + (x-xmin)/(xmax-xmin)*(canvas.clientWidth-margin.left-margin.right); }
+function baseSy(y){ return canvas.clientHeight-margin.bottom-(y-ymin)/(ymax-ymin)*(canvas.clientHeight-margin.top-margin.bottom); }
+function plotCenter(){ return {x:(margin.left+canvas.clientWidth-margin.right)/2,y:(margin.top+canvas.clientHeight-margin.bottom)/2}; }
+function sx(x){ const c=plotCenter(); return c.x+(baseSx(x)-c.x)*view.scale+view.offsetX; }
+function sy(y){ const c=plotCenter(); return c.y+(baseSy(y)-c.y)*view.scale+view.offsetY; }
+function resize(){
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(shell.clientWidth*dpr); canvas.height = Math.round(shell.clientHeight*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0); draw();
+}
+function tickValues(min,max,count=7){ const out=[]; for(let i=0;i<count;i++) out.push(min+(max-min)*i/(count-1)); return out; }
+function drawAxes(){
+  const w=canvas.clientWidth,h=canvas.clientHeight;
+  ctx.strokeStyle="#cfd6dc"; ctx.lineWidth=1; ctx.fillStyle="#5f6b76"; ctx.font="11px system-ui";
+  for(const value of tickValues(xmin,xmax)){
+    const x=sx(value); ctx.beginPath();ctx.moveTo(x,margin.top);ctx.lineTo(x,h-margin.bottom);ctx.strokeStyle="#edf0f2";ctx.stroke();
+    ctx.fillStyle="#5f6b76";ctx.textAlign="center";ctx.fillText(value.toFixed(2),x,h-margin.bottom+19);
+  }
+  for(const value of tickValues(ymin,ymax)){
+    const y=sy(value);ctx.beginPath();ctx.moveTo(margin.left,y);ctx.lineTo(w-margin.right,y);ctx.strokeStyle="#edf0f2";ctx.stroke();
+    ctx.fillStyle="#5f6b76";ctx.textAlign="right";ctx.fillText(value.toFixed(2),margin.left-8,y+4);
+  }
+  ctx.strokeStyle="#89949e";ctx.beginPath();ctx.moveTo(margin.left,margin.top);ctx.lineTo(margin.left,h-margin.bottom);ctx.lineTo(w-margin.right,h-margin.bottom);ctx.stroke();
+  ctx.fillStyle="#36414b";ctx.textAlign="center";ctx.font="12px system-ui";ctx.fillText("PCA component 1",(margin.left+w-margin.right)/2,h-14);
+  ctx.save();ctx.translate(18,(margin.top+h-margin.bottom)/2);ctx.rotate(-Math.PI/2);ctx.fillText("PCA component 2",0,0);ctx.restore();
+}
+function draw(){
+  const w=canvas.clientWidth,h=canvas.clientHeight, active=activeClass();
+  ctx.clearRect(0,0,w,h);ctx.fillStyle="white";ctx.fillRect(0,0,w,h);drawAxes();
+  for(const p of DATA.points){
+    if(active!==null && p[2]!==active) continue;
+    ctx.globalAlpha=.62;ctx.fillStyle=DATA.colors[p[2]];ctx.beginPath();ctx.arc(sx(p[0]),sy(p[1]),2.3,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1; hitCenters=[];
+  const groundCenters = new Map(
+    DATA.centers
+      .filter(c=>c.source==="Ground Truth")
+      .map(c=>[c.classId,c])
+  );
+  for(const c of DATA.centers){
+    if(c.source==="Ground Truth" || (active!==null && c.classId!==active)) continue;
+    const ground=groundCenters.get(c.classId);
+    if(!ground) continue;
+    const x1=sx(ground.x),y1=sy(ground.y),x2=sx(c.x),y2=sy(c.y);
+    const distance=Math.hypot(c.x-ground.x,c.y-ground.y);
+    const weight=1/(1+distance);
+    ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);
+    ctx.strokeStyle=sourceColors[c.source]||DATA.colors[c.classId];ctx.globalAlpha=.72;ctx.lineWidth=1.8;ctx.stroke();
+    if(active!==null || DATA.classNames.length<=10){
+      const dx=x2-x1,dy=y2-y1,length=Math.hypot(dx,dy)||1;
+      const offset=sourceOffsets[c.source]||0;
+      const mx=(x1+x2)/2-dy/length*offset,my=(y1+y2)/2+dx/length*offset;
+      const text=`${c.source}: d=${distance.toFixed(2)}  w=${weight.toFixed(2)}`;
+      ctx.globalAlpha=.9;ctx.font="10px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";
+      const width=ctx.measureText(text).width+8;
+      ctx.fillStyle="white";ctx.fillRect(mx-width/2,my-8,width,16);
+      ctx.fillStyle=sourceColors[c.source]||"#303a44";ctx.fillText(text,mx,my);
+    }
+  }
+  ctx.globalAlpha=1;
+  for(const c of DATA.centers){
+    if(active!==null && c.classId!==active) continue;
+    const x=sx(c.x),y=sy(c.y);
+    ctx.font="bold 22px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.lineWidth=3;ctx.strokeStyle="white";ctx.strokeText(symbols[c.marker],x,y);
+    ctx.lineWidth=1.4;ctx.strokeStyle="#111";ctx.strokeText(symbols[c.marker],x,y);
+    ctx.fillStyle=DATA.colors[c.classId];ctx.fillText(symbols[c.marker],x,y);
+    hitCenters.push({...c,px:x,py:y});
+  }
+}
+function zoomAt(factor, px, py){
+  const oldScale=view.scale;
+  const newScale=Math.max(.5,Math.min(25,oldScale*factor));
+  factor=newScale/oldScale;
+  const c=plotCenter();
+  view.offsetX=(px-c.x)-((px-c.x)-view.offsetX)*factor;
+  view.offsetY=(py-c.y)-((py-c.y)-view.offsetY)*factor;
+  view.scale=newScale;draw();
+}
+function resetView(){ view={scale:1,offsetX:0,offsetY:0};draw(); }
+function updateDistanceRanking(){
+  const box=document.getElementById("distanceRanking"),selected=activeClass();
+  box.innerHTML="";
+  if(selected===null){
+    box.innerHTML='<div class="hint">Select a class to compare centroid distances.</div>';
+    return;
+  }
+  const ground=DATA.centers.find(c=>c.source==="Ground Truth"&&c.classId===selected);
+  if(!ground)return;
+  const rows=DATA.centers.filter(c=>c.source!=="Ground Truth"&&c.classId===selected)
+    .map(c=>({...c,distance:Math.hypot(c.x-ground.x,c.y-ground.y)}))
+    .sort((a,b)=>a.distance-b.distance);
+  const max=Math.max(...rows.map(r=>r.distance),.000001);
+  rows.forEach(row=>{
+    const el=document.createElement("div");el.className="distance-row";
+    el.innerHTML=`<span>${row.source}</span><span class="distance-track"><span class="distance-bar" style="display:block;width:${row.distance/max*100}%;background:${sourceColors[row.source]}"></span></span><span class="distance-value">${row.distance.toFixed(3)}</span>`;
+    box.appendChild(el);
+  });
+}
+function setActiveUI(){
+  document.querySelectorAll(".class-item").forEach(el=>el.classList.toggle("active", Number(el.dataset.id)===activeClass() || (el.dataset.id==="all" && activeClass()===null)));
+  updateDistanceRanking();
+}
+const classBox=document.getElementById("classes");
+const allBtn=document.createElement("button");allBtn.className="class-item all active";allBtn.dataset.id="all";allBtn.textContent="All classes";
+allBtn.onclick=()=>{lockedClass=null;hoverClass=null;setActiveUI();draw();};classBox.appendChild(allBtn);
+DATA.classNames.forEach((name,id)=>{
+  const b=document.createElement("button");b.className="class-item";b.dataset.id=id;
+  b.innerHTML=`<span class="swatch" style="background:${DATA.colors[id]}"></span><span>${name}</span>`;
+  b.onmouseenter=()=>{if(lockedClass===null){hoverClass=id;setActiveUI();draw();}};
+  b.onmouseleave=()=>{if(lockedClass===null){hoverClass=null;setActiveUI();draw();}};
+  b.onclick=()=>{lockedClass=lockedClass===id?null:id;hoverClass=null;setActiveUI();draw();};classBox.appendChild(b);
+});
+const sourceBox=document.getElementById("sources");
+DATA.sources.forEach((name,i)=>{const d=document.createElement("div");d.className="source";d.innerHTML=`<span class="symbol" style="color:${sourceColors[name]}">${symbols[["star","x","plus","diamond","triangle","square"][i]]}</span><span>${name}</span>`;sourceBox.appendChild(d);});
+canvas.onmousemove=e=>{
+  if(dragging){
+    view.offsetX=dragStart.offsetX+(e.clientX-dragStart.x);
+    view.offsetY=dragStart.offsetY+(e.clientY-dragStart.y);
+    draw();return;
+  }
+  const hit=hitCenters.find(c=>Math.hypot(c.px-e.offsetX,c.py-e.offsetY)<12);
+  if(!hit){tooltip.style.display="none";return;}
+  const acc=hit.acc===null?"":`<br>ACC: ${hit.acc.toFixed(2)}%`;
+  const ground=DATA.centers.find(c=>c.source==="Ground Truth" && c.classId===hit.classId);
+  const distance=(hit.source==="Ground Truth" || !ground)?null:Math.hypot(hit.x-ground.x,hit.y-ground.y);
+  const relation=distance===null?"":`<br>Distance: ${distance.toFixed(4)}<br>Weight: ${(1/(1+distance)).toFixed(4)}`;
+  const memory=hit.memoryPeakMb==null?"":`<br>Peak RSS: ${Number(hit.memoryPeakMb).toFixed(2)} MB<br>Added RSS: ${Number(hit.memoryDeltaMb).toFixed(2)} MB`;
+  tooltip.innerHTML=`<b>${hit.source}</b><br>${DATA.classNames[hit.classId]}<br>PCA: (${hit.x.toFixed(3)}, ${hit.y.toFixed(3)})${acc}${memory}${relation}`;
+  tooltip.style.display="block";tooltip.style.left=(e.clientX+14)+"px";tooltip.style.top=(e.clientY+14)+"px";
+};
+canvas.onmousedown=e=>{
+  if(e.button!==0)return;
+  dragging=true;canvas.classList.add("dragging");
+  dragStart={x:e.clientX,y:e.clientY,offsetX:view.offsetX,offsetY:view.offsetY};
+  tooltip.style.display="none";
+};
+window.addEventListener("mouseup",()=>{dragging=false;canvas.classList.remove("dragging");});
+canvas.onmouseleave=()=>{tooltip.style.display="none";};
+canvas.addEventListener("wheel",e=>{
+  e.preventDefault();
+  const rect=canvas.getBoundingClientRect();
+  zoomAt(e.deltaY<0?1.18:1/1.18,e.clientX-rect.left,e.clientY-rect.top);
+},{passive:false});
+canvas.ondblclick=resetView;
+document.getElementById("zoomIn").onclick=()=>{const c=plotCenter();zoomAt(1.25,c.x,c.y);};
+document.getElementById("zoomOut").onclick=()=>{const c=plotCenter();zoomAt(1/1.25,c.x,c.y);};
+document.getElementById("resetZoom").onclick=resetView;
+updateDistanceRanking();
+new ResizeObserver(resize).observe(shell); resize();
+</script>
+</body>
+</html>

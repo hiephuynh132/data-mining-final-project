@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ecoli interactive centroids</title>
+<style>
+  :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f5f7f9; color: #18212b; }
+  main { min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1fr) 290px; }
+  .plot-wrap { min-width: 0; padding: 22px; display: flex; flex-direction: column; }
+  h1 { font-size: 20px; margin: 0 0 4px; letter-spacing: 0; }
+  .subtitle { color: #65717d; font-size: 13px; margin-bottom: 14px; }
+  .canvas-shell { position: relative; flex: 1; min-height: 620px; background: white; border: 1px solid #d9e0e6; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: grab; }
+  canvas.dragging { cursor: grabbing; }
+  .zoom-controls { position: absolute; top: 12px; left: 12px; z-index: 3; display: flex; gap: 5px; }
+  .zoom-controls button { width: 34px; height: 32px; background: #fff; border: 1px solid #cfd7de; cursor: pointer; font-size: 17px; box-shadow: 0 1px 4px #0001; }
+  .zoom-controls button:hover { background: #eef2f5; }
+  .zoom-controls .reset { width: auto; padding: 0 10px; font-size: 12px; }
+  aside { border-left: 1px solid #d9e0e6; background: white; padding: 20px 16px; overflow: auto; }
+  h2 { font-size: 13px; text-transform: uppercase; color: #68737e; margin: 4px 0 10px; letter-spacing: .04em; }
+  .class-list, .source-list { display: grid; gap: 4px; margin-bottom: 22px; }
+  button { border: 0; background: transparent; color: inherit; font: inherit; }
+  .class-item { width: 100%; display: flex; align-items: center; gap: 9px; padding: 7px 8px; cursor: pointer; text-align: left; }
+  .class-item:hover, .class-item.active { background: #eef2f5; }
+  .swatch { width: 12px; height: 12px; flex: 0 0 12px; border-radius: 50%; }
+  .all { font-weight: 650; border-bottom: 1px solid #e7ebef; margin-bottom: 5px; }
+  .source { display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: center; font-size: 13px; padding: 4px 8px; }
+  .symbol { text-align: center; font-size: 18px; font-weight: 800; }
+  .distance-list { display: grid; gap: 8px; margin-bottom: 22px; }
+  .distance-row { display: grid; grid-template-columns: 76px 1fr 48px; gap: 7px; align-items: center; font-size: 12px; }
+  .distance-track { height: 8px; background: #edf0f2; overflow: hidden; }
+  .distance-bar { height: 100%; min-width: 2px; }
+  .distance-value { text-align: right; font-variant-numeric: tabular-nums; }
+  .hint { font-size: 12px; color: #68737e; line-height: 1.5; }
+  .tooltip { position: fixed; pointer-events: none; display: none; z-index: 4; background: #18212b; color: white; padding: 7px 9px; font-size: 12px; border-radius: 4px; box-shadow: 0 4px 16px #0003; }
+  @media (max-width: 850px) {
+    main { grid-template-columns: 1fr; }
+    aside { border-left: 0; border-top: 1px solid #d9e0e6; }
+    .canvas-shell { min-height: 520px; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <section class="plot-wrap">
+    <h1 id="title"></h1>
+    <div class="subtitle">Ground-truth samples with centroids from all algorithms</div>
+    <div class="canvas-shell">
+      <canvas id="plot"></canvas>
+      <div class="zoom-controls">
+        <button id="zoomIn" title="Zoom in">+</button>
+        <button id="zoomOut" title="Zoom out">−</button>
+        <button id="resetZoom" class="reset" title="Reset view">Reset</button>
+      </div>
+    </div>
+  </section>
+  <aside>
+    <h2>Classes</h2>
+    <div id="classes" class="class-list"></div>
+    <h2>Centroid source</h2>
+    <div id="sources" class="source-list"></div>
+    <h2>Distance ranking</h2>
+    <div id="distanceRanking" class="distance-list"></div>
+    <div class="hint">Hover a class to isolate it. Click to lock the selection. Use the mouse wheel to zoom, drag to pan, and double-click to reset.</div>
+  </aside>
+</main>
+<div id="tooltip" class="tooltip"></div>
+<script>
+const DATA = {"dataset": "ecoli", "points": [[-1.2903515084175916, -0.32491247216998503, 0], [-1.5860121595449963, -1.034682921955447, 0], [-0.530483123466125, -0.13049518401453644, 0], [-0.26172079839583323, 0.3382640750844246, 0], [-1.8243643718275635, -0.7318344604380721, 0], [-0.6403592597604472, 0.09149847886446448, 0], [-2.143460415848123, -0.6661996457817898, 0], [-1.769456408771789, -0.7930572687407043, 0], [-0.6932709380548457, -1.006297624177639, 0], [-1.5712012338289458, 0.035199643811776316, 0], [-1.3602340998438667, -0.6844058900098611, 0], [-2.221200862791103, 0.03755202604975319, 0], [-1.7508210655360437, -0.38245732104490554, 0], [-0.985480780388411, 0.3588664151266692, 0], [-2.3031649136668206, -0.1670559514267958, 0], [-0.9620384222574122, -0.8853166312908356, 0], [-1.8918623217387927, -0.03398885834508827, 0], [-0.10849495415227413, -1.1488888745395964, 0], [-1.998218784311289, -0.49758572035398013, 0], [-1.6838492695148932, 0.5600487312774917, 0], [-2.671009985239681, 0.7885273760547306, 0], [-2.350309823386899, -0.36660710523978784, 0], [-0.8143341876820892, 0.3319735628863164, 0], [-2.5705011872988033, -0.7660498346705203, 0], [-2.0050703467668107, 0.027366272506728958, 0], [-0.8617201580622367, -0.9117547505200198, 0], [-1.4884114013449885, -0.6075416950624851, 0], [-1.378713506013105, -0.3187934452924191, 0], [-0.8576260495646686, -0.43586936433013673, 0], [-1.183323548226205, -0.2591524070053756, 0], [-1.3238294465455018, 0.04947411113886202, 0], [-1.5433402296345993, -0.6773555432393783, 0], [-0.7885578008082131, 0.2774514100007738, 0], [-1.3569843317716421, -0.7050008891810716, 0], [-2.7030165714552914, -0.39922156821435784, 0], [-0.9624193712949087, -0.04548761016320833, 0], [-1.5452697631195982, -0.04010305841609699, 0], [-0.2849680956956394, 0.39782482371321853, 0], [-1.88064092615173, -0.24589568244382498, 0], [-1.7076992146430185, 0.1695844489618171, 0], [-1.1455692477594825, -0.2872026784946407, 0], [-0.6859999526833821, -0.8530874523574378, 0], [-0.767975325271231, -0.13888631035312562, 0], [-1.3669252980382038, -0.6252477807406148, 0], [-0.5503952186047523, 0.2423551142416724, 0], [-1.304176377575359, -1.0436080320493124, 0], [0.1705811033689031, -0.9767747377720345, 0], [-1.5281278825604647, -0.13386237981221488, 0], [-1.7482388994301885, -0.04930984471415331, 0], [-1.7277201902001667, -0.8726691313514126, 0], [-1.074100847714709, 0.0734958036686458, 0], [-3.0644620960023037, -0.11776946550134677, 0], [-1.6640847642436047, -0.8902698696296695, 0], [-0.5639312420800348, -0.5235614265235119, 0], [-2.470530325891734, 0.5800059851796547, 0], [-1.274132193796739, 0.2448528887584859, 0], [-1.1362745836247559, -0.23997084024331264, 0], [-1.286516037242406, -0.4711016513356557, 0], [-1.6126842999664874, -0.3877183307696996, 0], [-0.8891083779207218, -0.3997340664516486, 0], [-0.07791517616853427, -0.08268309702759977, 0], [-1.3560159731691142, -0.0764382067920174, 0], [-0.5117105192072633, -0.7127997052384847, 0], [-2.2490036570384806, -0.8487142476506707, 0], [-1.0270735010735066, -0.5706973188351249, 0], [-0.31570148267921494, -1.0396360602066292, 0], [-1.7036824107661483, -0.6796126924749855, 0], [-0.08281218076718858, 0.12594934987126452, 0], [-1.9911465656077683, -0.5153342262636534, 0], [-0.5456218967220988, -0.3684633217001161, 0], [-2.4428367510872286, -0.7835006060163383, 0], [-1.2426050432337632, 0.27852485421698436, 0], [-1.0532226110791454, -0.12232897279629917, 0], [-1.9401228623070075, 0.3358941411043191, 0], [-1.9871320002391106, -0.3752723763228199, 0], [-1.5768134903506457, -0.4313089640044814, 0], [-1.399013730346118, 0.10428070283196844, 0], [-0.36734664948856116, -0.3238314870449258, 0], [-1.6514234642321208, -0.46452605731217483, 0], [-1.1170583853091176, -0.6201731996804852, 0], [-1.5341192384575482, -0.8479582374548925, 0], [-1.223939098724665, -0.1625737066366681, 0], [-1.940711685568343, -0.05053007450401429, 0], [-0.8302118267426929, 0.03420250807068045, 0], [-0.50697050149111, -0.18149630343234557, 0], [-0.12835005620795967, -0.5474872487872392, 0], [-0.10299284203283676, -0.1665052944229375, 0], [-1.0248045305364735, 0.05330349383206337, 0], [-1.808561866540649, 0.5336756124411807, 0], [-1.8979444890920014, 0.20316183883542022, 0], [-0.9501970413132502, -0.3184469352978142, 0], [-1.9431337944550695, 0.12491670281359213, 0], [-1.6711858772544224, 0.18783010811420212, 0], [-2.195553171506277, -0.020712419789801373, 0], [-1.9725966814267655, -0.10259535373299536, 0], [-0.17252725273149205, 1.3563683910238453, 0], [-1.7396118448921485, -0.4725479674183524, 0], [-1.2076645867940885, 0.7060873041069783, 0], [-0.9679386926331834, 0.933184835509761, 0], [-0.5877009121416502, 0.07406385142880216, 0], [-1.1425584369048576, -0.22095215794054562, 0], [-0.7477199688997405, -0.1758162569483848, 0], [-2.034211637585599, -0.4239940590226322, 0], [-1.7751406317890943, 0.11658547448733848, 0], [-1.989789760436442, -0.7200767386535669, 0], [-1.4522980783873631, -0.23140823546547745, 0], [-1.063315326855057, 0.07539247083768735, 0], [-1.0219323517058525, -0.7516310922201999, 0], [-0.9851085714633341, 0.002696266544794872, 0], [-1.7074791440733905, -0.16677464400293895, 0], [-2.369624165839985, -0.10533384055551016, 0], [-0.4568919067916021, -1.0083495092483898, 0], [-1.8363526321040842, -0.283110283087681, 0], [-1.649527798438074, -0.5708018732919479, 0], [-1.8869388755088, 0.10111682405107884, 0], [-1.2894886701903745, 0.32292420685414847, 0], [-1.374799684468379, -0.3754880960651976, 0], [-1.5299310304363145, 0.6151527648555142, 0], [-1.155564508282986, -0.445863984864357, 0], [-1.0466704337549122, -1.1508294682483153, 0], [-1.9550258165905292, -1.0139155648051865, 0], [-1.9164956651718876, -0.3682155482766529, 0], [-1.6699017491136785, -0.7338232292257774, 0], [-2.4485577410169252, -1.1831960853120862, 0], [-0.5849411876931915, -0.1069753954326237, 0], [-0.9956584694315086, -0.18323370620075197, 0], [-2.1143799666450818, -0.5029023830283692, 0], [-1.0995925271454898, -0.16456253846261154, 0], [-2.056659959402625, -0.6688333485067813, 0], [-1.0105869836962056, -0.3755041544248595, 0], [-1.4764477086857146, -1.502575585552646, 0], [-1.5148667376144545, -0.6176580365474347, 0], [-1.7900376915494034, -0.13039054053064866, 0], [-1.1301700409039286, -0.8828372179989279, 0], [-1.2177541672742083, -0.49683604284515315, 0], [-1.0958401475930846, -0.3289324299769371, 0], [-2.2520014397189034, -0.23978800417448398, 0], [-2.097129844730716, -0.39338137736221584, 0], [-1.4428007519321755, -0.05731204082659468, 0], [-1.9737693297098207, -0.7465572150760564, 0], [-0.27428838848105086, -0.8716249636757571, 0], [-1.5312815343988744, -0.5246825826040116, 0], [-1.7367916205543301, -0.5672874877023606, 0], [0.0030548311570500067, -0.6630628998168828, 1], [-0.3084555755685179, -0.19028687861284474, 1], [1.9860476888621756, -0.8762072402467564, 1], [1.6278435282401338, -1.787127876400561, 1], [1.554992419951359, -1.339653332931063, 1], [1.2885192520992543, -1.337380175310875, 1], [1.920445744273326, -0.8353013880329606, 1], [0.7389921713216252, -1.8109784318086095, 1], [1.436993346665809, -1.0943885348611588, 1], [0.9485450185628412, -1.179526646811758, 1], [1.767047868015597, -0.9432950188638816, 1], [0.613425741782996, -0.709297533259769, 1], [1.9153207112559563, -1.2762295785816113, 1], [2.5483072543875456, -1.2687708397441992, 1], [1.7689212118269422, -0.27559418267717295, 1], [1.6657238747876728, -1.1527515541459632, 1], [1.7431904212890204, -1.059722885643763, 1], [1.884306882737148, -1.494691741919998, 1], [1.8954649265804382, -0.6782727633723662, 1], [1.3779748192338503, -0.33652521491526843, 1], [1.4186237453704986, -0.6939871285447033, 1], [0.7337362001398436, -0.9858296820491842, 1], [1.7080562430367474, -0.24763058578574257, 1], [2.025816150287544, -0.7228915319119658, 1], [1.5481177253346614, -0.6607634503971033, 1], [2.391414800755531, -0.8743353025649855, 1], [1.4970758881123396, -1.2291673582182185, 1], [1.5691560156261848, -1.4527666515556308, 1], [2.5903796255068317, -0.9208288974662047, 1], [1.4089173803512312, -1.6363811225508442, 1], [1.365355567064453, -1.2832770591844995, 1], [2.0416134006185183, -0.7337245186434593, 1], [1.095319046725205, -1.067712845633078, 1], [1.4788560223182698, -0.18099911314021885, 1], [1.4752877498323864, -0.12882188860829982, 1], [2.00866134832404, -0.5677870313633797, 1], [2.225651578854007, -1.5469271798270086, 1], [2.3303962084418948, -0.6258317866352883, 1], [2.265817794048211, -0.9946576915705776, 1], [2.455252152524813, 2.1023837121632445, 1], [-1.602806006387032, -0.5404735043626184, 1], [2.157885652057296, 0.43394873797329964, 1], [0.9965425444357464, -1.6659896423625848, 1], [2.208919237656795, 0.1111453844154433, 1], [1.8865192032827411, -0.5451335123064316, 1], [0.5459906792306015, -1.7386133959923127, 1], [0.8963590450311858, -0.019987649959864306, 1], [0.178558253896326, -1.3236460614754282, 1], [1.9423914088555723, 0.009264258660419949, 1], [1.2689640992032905, -1.0066177982891873, 1], [1.379590154957729, -0.6557151051323769, 1], [1.886839553291363, -1.3835717667367355, 1], [2.0411221823221553, -0.6275201212940051, 1], [0.8029484152349133, -0.8634090839960679, 1], [1.381723203994223, -0.3691102918125332, 1], [1.681564871792488, -0.9148191257755425, 1], [0.7756132892436834, -1.1835154294311696, 1], [1.5827565297157098, -0.4517749569456392, 1], [0.724478959820252, -1.0574685765869256, 1], [0.8867364792203177, -1.2767795947077223, 1], [1.1511426064142662, -1.043122312400088, 1], [1.0658453486848962, -1.5188645056121555, 1], [2.326398219741309, -0.40835969644623543, 1], [1.2514055804254067, -0.808898553956222, 1], [0.3976884239130931, -1.4124239982109188, 1], [1.88752541453988, -2.1559720259333752, 1], [2.3800981386025235, -0.5587930130896133, 1], [1.8770268217920814, -0.8941393491794833, 1], [1.8669008454062133, -0.7626748087616229, 1], [-0.2974534404824347, 0.48973939326280425, 1], [-0.737902825453026, -0.05905652380502759, 1], [-1.2115438408023853, -0.9894505729952144, 1], [-1.411992506467716, -0.4296977327512352, 1], [-0.7587403101027096, -0.19785329250518235, 1], [-0.8310659725910098, 0.3271811798657003, 1], [2.0839052533132083, 0.38806955562523954, 1], [3.4822961332915052, -1.0482648715600027, 1], [0.5792418873512045, 0.926491415259422, 3], [1.809823244643073, -0.6796344686326758, 3], [0.7334795923431935, 12.184877184183982, 2], [2.665370276303, 1.8388502335119532, 2], [2.243936627710525, -0.7799357479616593, 4], [2.623671825141004, -0.7909973944746437, 4], [2.55169244145109, -0.3706416004236192, 4], [1.8889055731664632, -0.71993768106425, 4], [1.6918655116139878, -0.6227990394241367, 4], [2.014891201120935, -0.9199325975096195, 4], [1.887158275435935, -0.7252119235070953, 4], [1.6238459858377128, -1.3837977769281744, 4], [1.1099276496491275, -0.675358570152823, 4], [1.5700952830891424, -0.5092577976717588, 4], [1.4588827424723958, -0.6503206281024788, 4], [2.080558900555083, 0.4018043364647498, 4], [2.2400379759067546, -0.1972055551635553, 4], [2.0616824571698738, -0.1251542717447915, 4], [1.2726871693812287, -0.16065066667264682, 4], [1.848556104136773, -0.3630215605827034, 4], [1.5866396251304808, -0.9062706952475414, 4], [1.9282697854839945, -0.9993088372694965, 4], [2.947931054368503, -0.8926177291916939, 4], [2.886579083872041, -0.48085272286197395, 4], [2.542724556953522, -0.24661727853417292, 4], [1.5290699070853437, -1.058067434658595, 4], [0.9700653505685153, -0.20329366950189365, 4], [2.9568438170951823, -0.7148593182935683, 4], [1.3987363889643065, -0.46661190616266285, 4], [2.4220575909547097, -0.28579139379994123, 4], [1.7166716658712453, -1.2033122908539975, 4], [2.11742398856878, 2.3978063815549966, 4], [2.021826105416424, -0.3130376060909192, 4], [3.178534123643726, -0.1435709978091289, 4], [1.9370562159864406, -0.5650521146244444, 4], [2.9066841510462127, -0.20005496456776684, 4], [1.5778178701882193, 0.09546255959692208, 4], [-1.7356998481535748, 0.15768541964583221, 4], [1.4598453562642766, -0.2755802736434524, 4], [1.0146521093591916, 1.3627949075315293, 5], [0.18973963029623522, 1.189013006080274, 5], [0.9732051003503656, 1.8293665424662768, 5], [-0.26337451080938185, 1.3578914933335116, 5], [1.3473168164884735, 1.4304876382452163, 5], [0.8889442977836985, 1.9873200912945985, 5], [1.7376528926067587, 1.6266546022041202, 5], [1.5724561435647406, 1.4101791474920524, 5], [1.1134608193834306, 1.053371250027069, 5], [0.902392281108509, 1.8051928836033557, 5], [1.0332315988864513, 1.4229115639959597, 5], [0.6334344744884565, 0.678306278633493, 5], [0.4787638125909258, 0.4532288744290588, 5], [0.4846626478677713, 1.1574910475122373, 5], [-0.1025040085039116, 0.9078458555020961, 5], [2.3075876560589936, 3.5306523361379853, 5], [0.2840627184806484, 1.0932517331534797, 5], [0.39595773890008046, 0.46833258115847093, 5], [0.7353181464532293, 1.220872229427352, 5], [0.45752770580395463, 1.031148570240605, 5], [-0.12253798493293729, 4.454729295879657, 6], [0.9053176995626186, 3.215995890904184, 6], [0.8523984801803751, 3.320054702477476, 6], [0.925085472002809, 3.7596126926897657, 6], [0.9523998256345089, 3.389124854157117, 6], [0.04302793172947761, 0.5960925256115285, 7], [0.6468424302444956, 0.7233189631523977, 7], [-0.16781265230045528, 1.749141816276587, 7], [0.705865609618548, 1.558472032992438, 7], [0.2749695905602489, 0.4151405468184031, 7], [-0.4879134259733302, 2.120113602796723, 7], [-0.008779191278874877, 1.2418979026030934, 7], [0.2522444303420578, 1.7277987683670983, 7], [-0.10658679579333129, 0.8984842700577478, 7], [0.6055359952921129, 1.7994348264776245, 7], [-0.5399350891557267, 0.7123845272214704, 7], [0.3260759966376901, 1.1863923469586175, 7], [-0.3476688636925893, 1.2637403660945545, 7], [-0.7170068406828174, 1.854242559175097, 7], [-0.3875446662322715, 1.5360664503473527, 7], [1.0951403914468973, 1.0662281812994556, 7], [-1.4165162305655334, -0.4111685848311202, 7], [0.5071944999754238, 0.7821566221708848, 7], [0.17655946296425007, 0.8067367199235628, 7], [0.7222841766948985, 1.5572355818545152, 7], [0.02702042597039395, 1.6660005012234933, 7], [-0.5825898033347611, 1.9244146401424524, 7], [0.31947858390845635, 1.0620836123879238, 7], [0.38189145171445465, 1.801692625902583, 7], [0.2417598297132607, 1.3566747931012477, 7], [0.05286907260962564, 1.5259474484867461, 7], [0.47057440639958703, 0.3599017725350795, 7], [0.26730512078115065, 1.829702739499565, 7], [-0.3510018238922178, 1.0014997439478477, 7], [-0.8518828559963509, 1.470763384147235, 7], [2.3314476586672015, 0.020911608102420147, 7], [0.3540483165910461, 1.645087347438644, 7], [-0.7649217352507304, 1.3794903630109663, 7], [-0.43889154372824113, 1.668972748871528, 7], [0.03237843287499116, 1.1962467667590937, 7], [0.30599919590100866, 0.5624046801224789, 7], [-0.06342238691868395, 1.172402205425777, 7], [0.02747436671084492, 1.3929066042636, 7], [0.6558521874018142, 0.9506316402096029, 7], [0.158303169391965, 1.4447004882883523, 7], [-0.06374692855161374, 1.3972199741337623, 7], [-0.9288068216521134, -0.7540943616019513, 7], [-0.00567538078564343, 1.4894875039333295, 7], [-0.8798936671636252, 0.6543131079496453, 7], [-0.22118909692752192, 1.2925950322080026, 7], [0.7216220262694258, 0.8741799340934104, 7], [0.13532199981951074, -0.0766857280625255, 7], [0.5382417352535875, 0.8111143733449457, 7], [-0.3661331675254103, 0.9935894864656689, 7], [-0.39721171115856246, 0.763575986705035, 7], [-0.42318167714897936, 0.7616836550997977, 7], [0.47350747346168287, 1.1247571128630414, 7]], "centers": [{"source": "Ground Truth", "classId": 0, "x": -1.374052175653465, "y": -0.29066267626586395, "marker": "star", "acc": null, "memoryPeakMb": null, "memoryDeltaMb": null}, {"source": "Ground Truth", "classId": 1, "x": 1.3266804990625443, "y": -0.7910827298183793, "marker": "star", "acc": null, "memoryPeakMb": null, "memoryDeltaMb": null}, {"source": "Ground Truth", "classId": 2, "x": 1.6994249343230967, "y": 7.011863708847968, "marker": "star", "acc": null, "memoryPeakMb": null, "memoryDeltaMb": null}, {"source": "Ground Truth", "classId": 3, "x": 1.1945325659971389, "y": 0.12342847331337309, "marker": "star", "acc": null, "memoryPeakMb": null, "memoryDeltaMb": null}, {"source": "Ground Truth", "classId": 4, "x": 1.9004992146613253, "y": -0.42561038134950585, "marker": "star", "acc": null, "memoryPeakMb": null, "memoryDeltaMb": null}, {"source": "Ground Truth", "classId": 5, "x": 0.8092244035579311, "y": 1.350815631623437, "marker": "star", "acc": null, "memoryPeakMb": null, "memoryDeltaMb": null}, {"source": "Ground Truth", "classId": 6, "x": 0.7025326984894749, "y": 3.62790348722164, "marker": "star", "acc": null, "memoryPeakMb": null, "memoryDeltaMb": null}, {"source": "Ground Truth", "classId": 7, "x": 0.04485622333147544, "y": 1.1143861887762851, "marker": "star", "acc": null, "memoryPeakMb": null, "memoryDeltaMb": null}, {"source": "KMeans", "classId": 0, "x": -1.4037212387412679, "y": -0.34605323456276543, "marker": "x", "acc": 78.2738, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.03125}, {"source": "KMeans", "classId": 1, "x": 1.2513449342394263, "y": -0.9771411430469816, "marker": "x", "acc": 78.2738, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.03125}, {"source": "KMeans", "classId": 2, "x": 0.7334795923431935, "y": 12.184877184183982, "marker": "x", "acc": 78.2738, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.03125}, {"source": "KMeans", "classId": 3, "x": -0.503426985169377, "y": 0.010627849391496722, "marker": "x", "acc": 78.2738, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.03125}, {"source": "KMeans", "classId": 4, "x": 1.853810884673527, "y": -0.5282518657878604, "marker": "x", "acc": 78.2738, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.03125}, {"source": "KMeans", "classId": 5, "x": 0.6832826391691551, "y": 1.2337370235140777, "marker": "x", "acc": 78.2738, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.03125}, {"source": "KMeans", "classId": 6, "x": 1.4509219517669956, "y": 3.112134455497375, "marker": "x", "acc": 78.2738, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.03125}, {"source": "KMeans", "classId": 7, "x": -0.27621544708057894, "y": 1.0939133632565297, "marker": "x", "acc": 78.2738, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.03125}, {"source": "DisKmeans", "classId": 0, "x": -1.403442165701028, "y": -0.2990176727306411, "marker": "plus", "acc": 79.1667, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "DisKmeans", "classId": 1, "x": 0.9535737727063737, "y": -0.9548453537509843, "marker": "plus", "acc": 79.1667, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "DisKmeans", "classId": 2, "x": 0.7334795923431935, "y": 12.184877184183982, "marker": "plus", "acc": 79.1667, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "DisKmeans", "classId": 3, "x": -0.8125047909016047, "y": 0.09471485820218485, "marker": "plus", "acc": 79.1667, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "DisKmeans", "classId": 4, "x": 1.8875622246520705, "y": -0.5578445006410911, "marker": "plus", "acc": 79.1667, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "DisKmeans", "classId": 5, "x": 0.7465531347177672, "y": 1.2150449723577796, "marker": "plus", "acc": 79.1667, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "DisKmeans", "classId": 6, "x": 1.4509219517669956, "y": 3.112134455497375, "marker": "plus", "acc": 79.1667, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "DisKmeans", "classId": 7, "x": 0.10096641544657745, "y": 1.20620358766577, "marker": "plus", "acc": 79.1667, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "FDKM", "classId": 0, "x": -1.5727758589788094, "y": -0.3884727303849296, "marker": "diamond", "acc": 70.5357, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "FDKM", "classId": 1, "x": 1.2074532648058216, "y": -1.179242786317373, "marker": "diamond", "acc": 70.5357, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "FDKM", "classId": 2, "x": -0.7261969133527832, "y": -0.2557202344085687, "marker": "diamond", "acc": 70.5357, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "FDKM", "classId": 3, "x": -0.6263330117339412, "y": 0.18675195003101247, "marker": "diamond", "acc": 70.5357, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "FDKM", "classId": 4, "x": 2.0107784410388616, "y": -0.5268761004797734, "marker": "diamond", "acc": 70.5357, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "FDKM", "classId": 5, "x": 0.7762751474663743, "y": 1.1674793692108922, "marker": "diamond", "acc": 70.5357, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "FDKM", "classId": 6, "x": 1.3791777158246155, "y": 4.019408728366036, "marker": "diamond", "acc": 70.5357, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "FDKM", "classId": 7, "x": 0.10097830208896523, "y": 1.3952546288046614, "marker": "diamond", "acc": 70.5357, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "IFDKM", "classId": 0, "x": -1.416745951185587, "y": -0.2811026878440324, "marker": "triangle", "acc": 79.7619, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "IFDKM", "classId": 1, "x": 0.9351543271907501, "y": -0.9392710277380668, "marker": "triangle", "acc": 79.7619, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "IFDKM", "classId": 2, "x": 0.7334795923431935, "y": 12.184877184183982, "marker": "triangle", "acc": 79.7619, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "IFDKM", "classId": 3, "x": -0.503426985169377, "y": 0.010627849391496722, "marker": "triangle", "acc": 79.7619, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "IFDKM", "classId": 4, "x": 1.8875622246520705, "y": -0.5578445006410911, "marker": "triangle", "acc": 79.7619, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "IFDKM", "classId": 5, "x": 0.6117180437372545, "y": 1.0867379758187512, "marker": "triangle", "acc": 79.7619, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "IFDKM", "classId": 6, "x": 1.4509219517669956, "y": 3.112134455497375, "marker": "triangle", "acc": 79.7619, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "IFDKM", "classId": 7, "x": 0.14226257967273978, "y": 1.2336831858575057, "marker": "triangle", "acc": 79.7619, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "IFDFD", "classId": 0, "x": -1.403442165701028, "y": -0.2990176727306411, "marker": "square", "acc": 79.7619, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "IFDFD", "classId": 1, "x": 0.9535737727063737, "y": -0.9548453537509843, "marker": "square", "acc": 79.7619, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "IFDFD", "classId": 2, "x": 0.7334795923431935, "y": 12.184877184183982, "marker": "square", "acc": 79.7619, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "IFDFD", "classId": 3, "x": -0.8125047909016047, "y": 0.09471485820218485, "marker": "square", "acc": 79.7619, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "IFDFD", "classId": 4, "x": 1.8875622246520705, "y": -0.5578445006410911, "marker": "square", "acc": 79.7619, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "IFDFD", "classId": 5, "x": 0.7762751474663743, "y": 1.1674793692108922, "marker": "square", "acc": 79.7619, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "IFDFD", "classId": 6, "x": 1.4509219517669956, "y": 3.112134455497375, "marker": "square", "acc": 79.7619, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}, {"source": "IFDFD", "classId": 7, "x": 0.11579341954593922, "y": 1.2233381685682798, "marker": "square", "acc": 79.7619, "memoryPeakMb": 208.62109375, "memoryDeltaMb": 0.0}], "classNames": ["cp: Cytoplasm", "im: Inner membrane", "imL: Inner membrane lipoprotein", "imS: Inner membrane (cleavable)", "imU: Inner membrane (uncleavable)", "om: Outer membrane", "omL: Outer membrane lipoprotein", "pp: Periplasm"], "colors": ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f"], "sources": ["Ground Truth", "KMeans", "DisKmeans", "FDKM", "IFDKM", "IFDFD"]};
+const canvas = document.getElementById("plot");
+const ctx = canvas.getContext("2d");
+const shell = canvas.parentElement;
+const tooltip = document.getElementById("tooltip");
+const margin = {left: 68, right: 24, top: 22, bottom: 56};
+let hoverClass = null, lockedClass = null, hitCenters = [];
+let view = {scale:1, offsetX:0, offsetY:0};
+let dragging = false, dragStart = null;
+const symbols = {star:"★", x:"✕", plus:"✚", diamond:"◆", triangle:"▲", square:"■"};
+const sourceColors = {
+  "Ground Truth":"#111111", "KMeans":"#D62728", "DisKmeans":"#1F77B4",
+  "FDKM":"#2CA02C", "IFDKM":"#9467BD", "IFDFD":"#8C564B"
+};
+const sourceOffsets = {"KMeans":-28,"DisKmeans":-14,"FDKM":0,"IFDKM":14,"IFDFD":28};
+document.getElementById("title").textContent = DATA.dataset + ": interactive centroid comparison";
+
+const xs = DATA.points.map(p => p[0]), ys = DATA.points.map(p => p[1]);
+let xmin = Math.min(...xs), xmax = Math.max(...xs), ymin = Math.min(...ys), ymax = Math.max(...ys);
+const xpad = (xmax-xmin || 1)*.07, ypad = (ymax-ymin || 1)*.09;
+xmin -= xpad; xmax += xpad; ymin -= ypad; ymax += ypad;
+
+function activeClass(){ return lockedClass === null ? hoverClass : lockedClass; }
+function baseSx(x){ return margin.left + (x-xmin)/(xmax-xmin)*(canvas.clientWidth-margin.left-margin.right); }
+function baseSy(y){ return canvas.clientHeight-margin.bottom-(y-ymin)/(ymax-ymin)*(canvas.clientHeight-margin.top-margin.bottom); }
+function plotCenter(){ return {x:(margin.left+canvas.clientWidth-margin.right)/2,y:(margin.top+canvas.clientHeight-margin.bottom)/2}; }
+function sx(x){ const c=plotCenter(); return c.x+(baseSx(x)-c.x)*view.scale+view.offsetX; }
+function sy(y){ const c=plotCenter(); return c.y+(baseSy(y)-c.y)*view.scale+view.offsetY; }
+function resize(){
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(shell.clientWidth*dpr); canvas.height = Math.round(shell.clientHeight*dpr);
+  ctx.setTransform(dpr,0,0,dpr,0,0); draw();
+}
+function tickValues(min,max,count=7){ const out=[]; for(let i=0;i<count;i++) out.push(min+(max-min)*i/(count-1)); return out; }
+function drawAxes(){
+  const w=canvas.clientWidth,h=canvas.clientHeight;
+  ctx.strokeStyle="#cfd6dc"; ctx.lineWidth=1; ctx.fillStyle="#5f6b76"; ctx.font="11px system-ui";
+  for(const value of tickValues(xmin,xmax)){
+    const x=sx(value); ctx.beginPath();ctx.moveTo(x,margin.top);ctx.lineTo(x,h-margin.bottom);ctx.strokeStyle="#edf0f2";ctx.stroke();
+    ctx.fillStyle="#5f6b76";ctx.textAlign="center";ctx.fillText(value.toFixed(2),x,h-margin.bottom+19);
+  }
+  for(const value of tickValues(ymin,ymax)){
+    const y=sy(value);ctx.beginPath();ctx.moveTo(margin.left,y);ctx.lineTo(w-margin.right,y);ctx.strokeStyle="#edf0f2";ctx.stroke();
+    ctx.fillStyle="#5f6b76";ctx.textAlign="right";ctx.fillText(value.toFixed(2),margin.left-8,y+4);
+  }
+  ctx.strokeStyle="#89949e";ctx.beginPath();ctx.moveTo(margin.left,margin.top);ctx.lineTo(margin.left,h-margin.bottom);ctx.lineTo(w-margin.right,h-margin.bottom);ctx.stroke();
+  ctx.fillStyle="#36414b";ctx.textAlign="center";ctx.font="12px system-ui";ctx.fillText("PCA component 1",(margin.left+w-margin.right)/2,h-14);
+  ctx.save();ctx.translate(18,(margin.top+h-margin.bottom)/2);ctx.rotate(-Math.PI/2);ctx.fillText("PCA component 2",0,0);ctx.restore();
+}
+function draw(){
+  const w=canvas.clientWidth,h=canvas.clientHeight, active=activeClass();
+  ctx.clearRect(0,0,w,h);ctx.fillStyle="white";ctx.fillRect(0,0,w,h);drawAxes();
+  for(const p of DATA.points){
+    if(active!==null && p[2]!==active) continue;
+    ctx.globalAlpha=.62;ctx.fillStyle=DATA.colors[p[2]];ctx.beginPath();ctx.arc(sx(p[0]),sy(p[1]),2.3,0,Math.PI*2);ctx.fill();
+  }
+  ctx.globalAlpha=1; hitCenters=[];
+  const groundCenters = new Map(
+    DATA.centers
+      .filter(c=>c.source==="Ground Truth")
+      .map(c=>[c.classId,c])
+  );
+  for(const c of DATA.centers){
+    if(c.source==="Ground Truth" || (active!==null && c.classId!==active)) continue;
+    const ground=groundCenters.get(c.classId);
+    if(!ground) continue;
+    const x1=sx(ground.x),y1=sy(ground.y),x2=sx(c.x),y2=sy(c.y);
+    const distance=Math.hypot(c.x-ground.x,c.y-ground.y);
+    const weight=1/(1+distance);
+    ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);
+    ctx.strokeStyle=sourceColors[c.source]||DATA.colors[c.classId];ctx.globalAlpha=.72;ctx.lineWidth=1.8;ctx.stroke();
+    if(active!==null || DATA.classNames.length<=10){
+      const dx=x2-x1,dy=y2-y1,length=Math.hypot(dx,dy)||1;
+      const offset=sourceOffsets[c.source]||0;
+      const mx=(x1+x2)/2-dy/length*offset,my=(y1+y2)/2+dx/length*offset;
+      const text=`${c.source}: d=${distance.toFixed(2)}  w=${weight.toFixed(2)}`;
+      ctx.globalAlpha=.9;ctx.font="10px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";
+      const width=ctx.measureText(text).width+8;
+      ctx.fillStyle="white";ctx.fillRect(mx-width/2,my-8,width,16);
+      ctx.fillStyle=sourceColors[c.source]||"#303a44";ctx.fillText(text,mx,my);
+    }
+  }
+  ctx.globalAlpha=1;
+  for(const c of DATA.centers){
+    if(active!==null && c.classId!==active) continue;
+    const x=sx(c.x),y=sy(c.y);
+    ctx.font="bold 22px system-ui";ctx.textAlign="center";ctx.textBaseline="middle";
+    ctx.lineWidth=3;ctx.strokeStyle="white";ctx.strokeText(symbols[c.marker],x,y);
+    ctx.lineWidth=1.4;ctx.strokeStyle="#111";ctx.strokeText(symbols[c.marker],x,y);
+    ctx.fillStyle=DATA.colors[c.classId];ctx.fillText(symbols[c.marker],x,y);
+    hitCenters.push({...c,px:x,py:y});
+  }
+}
+function zoomAt(factor, px, py){
+  const oldScale=view.scale;
+  const newScale=Math.max(.5,Math.min(25,oldScale*factor));
+  factor=newScale/oldScale;
+  const c=plotCenter();
+  view.offsetX=(px-c.x)-((px-c.x)-view.offsetX)*factor;
+  view.offsetY=(py-c.y)-((py-c.y)-view.offsetY)*factor;
+  view.scale=newScale;draw();
+}
+function resetView(){ view={scale:1,offsetX:0,offsetY:0};draw(); }
+function updateDistanceRanking(){
+  const box=document.getElementById("distanceRanking"),selected=activeClass();
+  box.innerHTML="";
+  if(selected===null){
+    box.innerHTML='<div class="hint">Select a class to compare centroid distances.</div>';
+    return;
+  }
+  const ground=DATA.centers.find(c=>c.source==="Ground Truth"&&c.classId===selected);
+  if(!ground)return;
+  const rows=DATA.centers.filter(c=>c.source!=="Ground Truth"&&c.classId===selected)
+    .map(c=>({...c,distance:Math.hypot(c.x-ground.x,c.y-ground.y)}))
+    .sort((a,b)=>a.distance-b.distance);
+  const max=Math.max(...rows.map(r=>r.distance),.000001);
+  rows.forEach(row=>{
+    const el=document.createElement("div");el.className="distance-row";
+    el.innerHTML=`<span>${row.source}</span><span class="distance-track"><span class="distance-bar" style="display:block;width:${row.distance/max*100}%;background:${sourceColors[row.source]}"></span></span><span class="distance-value">${row.distance.toFixed(3)}</span>`;
+    box.appendChild(el);
+  });
+}
+function setActiveUI(){
+  document.querySelectorAll(".class-item").forEach(el=>el.classList.toggle("active", Number(el.dataset.id)===activeClass() || (el.dataset.id==="all" && activeClass()===null)));
+  updateDistanceRanking();
+}
+const classBox=document.getElementById("classes");
+const allBtn=document.createElement("button");allBtn.className="class-item all active";allBtn.dataset.id="all";allBtn.textContent="All classes";
+allBtn.onclick=()=>{lockedClass=null;hoverClass=null;setActiveUI();draw();};classBox.appendChild(allBtn);
+DATA.classNames.forEach((name,id)=>{
+  const b=document.createElement("button");b.className="class-item";b.dataset.id=id;
+  b.innerHTML=`<span class="swatch" style="background:${DATA.colors[id]}"></span><span>${name}</span>`;
+  b.onmouseenter=()=>{if(lockedClass===null){hoverClass=id;setActiveUI();draw();}};
+  b.onmouseleave=()=>{if(lockedClass===null){hoverClass=null;setActiveUI();draw();}};
+  b.onclick=()=>{lockedClass=lockedClass===id?null:id;hoverClass=null;setActiveUI();draw();};classBox.appendChild(b);
+});
+const sourceBox=document.getElementById("sources");
+DATA.sources.forEach((name,i)=>{const d=document.createElement("div");d.className="source";d.innerHTML=`<span class="symbol" style="color:${sourceColors[name]}">${symbols[["star","x","plus","diamond","triangle","square"][i]]}</span><span>${name}</span>`;sourceBox.appendChild(d);});
+canvas.onmousemove=e=>{
+  if(dragging){
+    view.offsetX=dragStart.offsetX+(e.clientX-dragStart.x);
+    view.offsetY=dragStart.offsetY+(e.clientY-dragStart.y);
+    draw();return;
+  }
+  const hit=hitCenters.find(c=>Math.hypot(c.px-e.offsetX,c.py-e.offsetY)<12);
+  if(!hit){tooltip.style.display="none";return;}
+  const acc=hit.acc===null?"":`<br>ACC: ${hit.acc.toFixed(2)}%`;
+  const ground=DATA.centers.find(c=>c.source==="Ground Truth" && c.classId===hit.classId);
+  const distance=(hit.source==="Ground Truth" || !ground)?null:Math.hypot(hit.x-ground.x,hit.y-ground.y);
+  const relation=distance===null?"":`<br>Distance: ${distance.toFixed(4)}<br>Weight: ${(1/(1+distance)).toFixed(4)}`;
+  const memory=hit.memoryPeakMb==null?"":`<br>Peak RSS: ${Number(hit.memoryPeakMb).toFixed(2)} MB<br>Added RSS: ${Number(hit.memoryDeltaMb).toFixed(2)} MB`;
+  tooltip.innerHTML=`<b>${hit.source}</b><br>${DATA.classNames[hit.classId]}<br>PCA: (${hit.x.toFixed(3)}, ${hit.y.toFixed(3)})${acc}${memory}${relation}`;
+  tooltip.style.display="block";tooltip.style.left=(e.clientX+14)+"px";tooltip.style.top=(e.clientY+14)+"px";
+};
+canvas.onmousedown=e=>{
+  if(e.button!==0)return;
+  dragging=true;canvas.classList.add("dragging");
+  dragStart={x:e.clientX,y:e.clientY,offsetX:view.offsetX,offsetY:view.offsetY};
+  tooltip.style.display="none";
+};
+window.addEventListener("mouseup",()=>{dragging=false;canvas.classList.remove("dragging");});
+canvas.onmouseleave=()=>{tooltip.style.display="none";};
+canvas.addEventListener("wheel",e=>{
+  e.preventDefault();
+  const rect=canvas.getBoundingClientRect();
+  zoomAt(e.deltaY<0?1.18:1/1.18,e.clientX-rect.left,e.clientY-rect.top);
+},{passive:false});
+canvas.ondblclick=resetView;
+document.getElementById("zoomIn").onclick=()=>{const c=plotCenter();zoomAt(1.25,c.x,c.y);};
+document.getElementById("zoomOut").onclick=()=>{const c=plotCenter();zoomAt(1/1.25,c.x,c.y);};
+document.getElementById("resetZoom").onclick=resetView;
+updateDistanceRanking();
+new ResizeObserver(resize).observe(shell); resize();
+</script>
+</body>
+</html>
